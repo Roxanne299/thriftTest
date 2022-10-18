@@ -1,1 +1,0 @@
-# my first thrift demo
