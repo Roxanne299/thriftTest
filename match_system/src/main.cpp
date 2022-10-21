@@ -2,6 +2,7 @@
 // You should copy it to another filename to avoid overwriting it.
 
 #include "match_server/Match.h"
+#include "save_client/Save.h"
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
@@ -11,7 +12,9 @@
 #include<mutex>
 #include<condition_variable>
 #include<queue>
+#include <thrift/transport/TTransportUtils.h>
 #include<vector>
+#include <thrift/transport/TSocket.h>
 
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
@@ -19,6 +22,7 @@ using namespace ::apache::thrift::transport;
 using namespace ::apache::thrift::server;
 using namespace std;
 using namespace  ::match_service;
+using namespace ::save_service;
 
 struct Task
 {
@@ -35,11 +39,28 @@ struct MessageQueue
 
 class Pool
 {
-//玩家池
+    //玩家池
     public:
         void save_result(int a,int b)
         {
+
             printf("Match result: %d %d\n", a, b);
+            std::shared_ptr<TTransport> socket(new TSocket("123.57.47.211", 9090));
+            std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+            std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+            SaveClient client(protocol);
+
+            try {
+                transport->open();
+                
+                a = client.save_data("acs_5594","52a4ae67",a,b);
+                if(a) puts("success");
+                else puts("failed");
+                puts("i am here");
+                transport->close();
+            } catch (TException& tx) {
+                cout << "ERROR: " << tx.what() << endl;
+            }
         }
         void match()
         {
@@ -82,7 +103,7 @@ class MatchHandler : virtual public MatchIf {
 
         int32_t add_user(const User& user, const std::string& info) {
             // Your implementation goes here
-           unique_lock<mutex> lck(message_queue.m);
+            unique_lock<mutex> lck(message_queue.m);
             message_queue.q.push({user,"add"});
             printf("add_user\n");
             message_queue.cv.notify_all();
@@ -108,7 +129,8 @@ void consume_task()
         if(message_queue.q.empty())
         {
             message_queue.cv.wait(lck);
-            continue;
+            pool.match();
+           continue;
         }
         else
         {
@@ -132,9 +154,9 @@ int main(int argc, char **argv) {
     ::apache::thrift::stdcxx::shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
 
     TSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
-    
+
     cout<<"start match server"<<endl;
-    
+
     thread matching_thread(consume_task);
 
     server.serve();
